@@ -43,15 +43,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Load current session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user?.email) fetchProfile(session.user.email);
       else setLoading(false);
     });
 
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { subscription } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setUser(session?.user ?? null);
-        if (session?.user) await fetchProfile(session.user.id);
+        if (session?.user?.email) await fetchProfile(session.user.email);
         else {
           setProfile(null);
           setLoading(false);
@@ -59,17 +58,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => subscription?.unsubscribe();
   }, []);
 
-  // Fetch profile safely
-  const fetchProfile = async (userId: string) => {
+  // Fetch profile by email
+  const fetchProfile = async (email: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId)
-        .maybeSingle(); // <-- safe if no row exists
+        .eq('email', email)
+        .maybeSingle();
 
       if (error) throw error;
       setProfile(data || null);
@@ -98,27 +97,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            username: userData.username,
-            full_name: userData.full_name,
-            bio: userData.bio,
-            phone: userData.phone,
-          },
-        },
+        options: { data: { ...userData, email } },
       });
 
       if (error) throw error;
 
-      // Automatically create profile row if user exists
       if (data.user) {
         const now = new Date().toISOString();
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
-              id: data.user.id,
-              user_id: data.user.id,
+              email: email,
               username: userData.username,
               full_name: userData.full_name,
               bio: userData.bio,
@@ -171,12 +161,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (!user) return;
+    if (!user?.email) return;
     try {
       const { error } = await supabase
         .from('profiles')
         .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', user.id);
+        .eq('email', user.email);
 
       if (error) throw error;
       setProfile(prev => (prev ? { ...prev, ...updates } : null));

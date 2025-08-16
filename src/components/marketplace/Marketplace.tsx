@@ -17,7 +17,7 @@ export const Marketplace: React.FC = () => {
 
   const filteredOffers = offers
     .filter(offer => 
-      offer.user_id !== user?.id && // Don't show user's own offers
+      offer.user_id !== user?.id &&
       (filterType === 'all' || offer.type === filterType) &&
       (searchTerm === '' || 
        offer.payment_method.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -39,23 +39,15 @@ export const Marketplace: React.FC = () => {
   const handleAcceptOffer = async (offerId: string, amount: number) => {
     try {
       await acceptOffer(offerId, amount);
-    } catch (error) {
-      // Error handling is done in the hook
-    }
+    } catch (error) {}
   };
 
   const handleContactSeller = async (sellerId: string) => {
     if (!user) return;
-    
     try {
       const conversationId = await createOrGetConversation(sellerId);
-      if (conversationId) {
-        // In a real app, you would navigate to the chat page
-        console.log('Open conversation:', conversationId);
-      }
-    } catch (error) {
-      // Error handling is done in the hook
-    }
+      if (conversationId) console.log('Open conversation:', conversationId);
+    } catch (error) {}
   };
 
   if (loading) {
@@ -183,7 +175,7 @@ export const Marketplace: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">Total</span>
                   <span className="font-bold text-gray-900 dark:text-white">
-                    ${offer.total_value.toFixed(2)}
+                    ${offer.total_value?.toFixed(2) ?? 'N/A'}
                   </span>
                 </div>
                 <div className="flex justify-between">

@@ -11,7 +11,7 @@ export const useOffers = () => {
 
   useEffect(() => {
     fetchOffers();
-    if (user) {
+    if (user?.email) {
       fetchMyOffers();
     }
 
@@ -27,13 +27,16 @@ export const useOffers = () => {
         },
         () => {
           fetchOffers();
-          if (user) fetchMyOffers();
+          if (user?.email) fetchMyOffers();
         }
       )
       .subscribe();
 
+    // Cleanup must be synchronous
     return () => {
-      subscription.unsubscribe();
+      if (subscription) {
+        subscription.unsubscribe(); // do NOT await here
+      }
     };
   }, [user]);
 
@@ -56,13 +59,13 @@ export const useOffers = () => {
   };
 
   const fetchMyOffers = async () => {
-    if (!user) return;
+    if (!user?.email) return;
 
     try {
       const { data, error } = await supabase
         .from('offers')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_email', user.email) // match your schema column
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -79,14 +82,14 @@ export const useOffers = () => {
     payment_method: string;
     description?: string;
   }) => {
-    if (!user) return;
+    if (!user?.email) return;
 
     try {
       const { error } = await supabase
         .from('offers')
         .insert({
           ...offerData,
-          user_id: user.id, // plain column, no foreign key needed
+          user_email: user.email, // no foreign key needed
           status: 'active',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),

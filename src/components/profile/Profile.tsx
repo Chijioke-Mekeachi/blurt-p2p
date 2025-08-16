@@ -1,28 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWallet } from '../../hooks/useWallet';
 import { User, Mail, Edit3, Save, X } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 export const Profile: React.FC = () => {
-  const { user, profile, updateProfile } = useAuth();
+  const { user, updateProfile } = useAuth();
   const { wallet } = useWallet();
+  const [profile, setProfile] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    username: profile?.username || '',
-    full_name: profile?.full_name || '',
-    bio: profile?.bio || '',
+    username: '',
+    full_name: '',
+    bio: '',
   });
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.email) return;
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('username, full_name, bio, created_at')
+          .eq('email', user.email)
+          .single();
+
+        if (error) throw error;
+
+        setProfile(data);
+        setFormData({
+          username: data?.username || '',
+          full_name: data?.full_name || '',
+          bio: data?.bio || '',
+        });
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+      }
+    };
+
+    fetchProfile();
+  }, [user?.email]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       await updateProfile(formData);
+      setProfile({ ...profile, ...formData });
       setIsEditing(false);
     } catch (error) {
-      // Error handling is done in the context
+      console.error('Update failed:', error);
     } finally {
       setLoading(false);
     }
@@ -38,10 +66,7 @@ export const Profile: React.FC = () => {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   return (
@@ -89,10 +114,10 @@ export const Profile: React.FC = () => {
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                {profile?.full_name || profile?.username}
+                {profile?.full_name || profile?.username || 'No Name'}
               </h3>
               <p className="text-gray-600 dark:text-gray-400">
-                @{profile?.username}
+                @{profile?.username || 'username'}
               </p>
             </div>
           </div>

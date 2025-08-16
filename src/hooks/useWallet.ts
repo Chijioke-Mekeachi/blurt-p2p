@@ -9,43 +9,46 @@ export const useWallet = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      fetchWallet();
-      
-      // Subscribe to wallet changes
-      const subscription = supabase
-        .channel('wallet_changes')
-        .on('postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'wallets',
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            setWallet(payload.new as Wallet);
-          }
-        )
-        .subscribe();
-
-      return () => {
-        subscription.unsubscribe();
-      };
+    if (!user?.email) {
+      setLoading(false);
+      return;
     }
-  }, [user]);
+
+    fetchWallet();
+
+    // Subscribe to wallet changes
+    const subscription = supabase
+      .channel('wallet_changes')
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'wallets',
+          filter: `user_email=eq.${user.email}`,
+        },
+        (payload) => {
+          setWallet(payload.new as Wallet);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user?.email]);
 
   const fetchWallet = async () => {
-    if (!user) return;
+    if (!user?.email) return;
 
     try {
       const { data, error } = await supabase
         .from('wallets')
         .select('*')
-        .eq('user_id', user.id)
-        .single();
+        .eq('user_email', user.email)
+        .maybeSingle(); // safe if no row exists
 
       if (error) throw error;
-      setWallet(data);
+      setWallet(data || null);
     } catch (error) {
       console.error('Error fetching wallet:', error);
       toast.error('Failed to load wallet');
@@ -55,16 +58,17 @@ export const useWallet = () => {
   };
 
   const deposit = async (amount: number) => {
-    if (!user || !wallet) return;
+    if (!user?.email || !wallet) return;
 
     try {
       const { error } = await supabase
         .from('wallets')
         .update({ balance: wallet.balance + amount })
-        .eq('user_id', user.id);
+        .eq('user_email', user.email);
 
       if (error) throw error;
       toast.success(`Deposited ${amount} BLURT successfully!`);
+      setWallet(prev => prev ? { ...prev, balance: prev.balance + amount } : prev);
     } catch (error) {
       console.error('Error depositing:', error);
       toast.error('Failed to deposit funds');
@@ -73,7 +77,7 @@ export const useWallet = () => {
   };
 
   const withdraw = async (amount: number) => {
-    if (!user || !wallet) return;
+    if (!user?.email || !wallet) return;
 
     if (wallet.balance < amount) {
       toast.error('Insufficient balance');
@@ -84,10 +88,11 @@ export const useWallet = () => {
       const { error } = await supabase
         .from('wallets')
         .update({ balance: wallet.balance - amount })
-        .eq('user_id', user.id);
+        .eq('user_email', user.email);
 
       if (error) throw error;
       toast.success(`Withdrew ${amount} BLURT successfully!`);
+      setWallet(prev => prev ? { ...prev, balance: prev.balance - amount } : prev);
     } catch (error) {
       console.error('Error withdrawing:', error);
       toast.error('Failed to withdraw funds');

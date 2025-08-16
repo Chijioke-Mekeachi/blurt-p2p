@@ -1,215 +1,136 @@
-import { useState, useEffect } from 'react';
-import { supabase, Conversation, Message } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
-import { toast } from 'react-hot-toast';
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
-export const useChat = () => {
-  const { user } = useAuth();
+export interface Conversation {
+  id: string;
+  user1_email: string;
+  user2_email: string;
+  last_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_email: string;
+  content: string;
+  created_at: string;
+}
+
+export const useChat = (userEmail: string | null) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [messages, setMessages] = useState<Record<string, Message[]>>({});
-  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    if (user) {
-      fetchConversations();
-
-      // Subscribe to conversation changes
-      const conversationSubscription = supabase
-        .channel('conversation_changes')
-        .on('postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'conversations',
-            filter: `user1_id=eq.${user.id},user2_id=eq.${user.id}`,
-          },
-          () => {
-            fetchConversations();
-          }
-        )
-        .subscribe();
-
-      // Subscribe to message changes
-      const messageSubscription = supabase
-        .channel('message_changes')
-        .on('postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'messages',
-          },
-          (payload) => {
-            if (payload.eventType === 'INSERT') {
-              const newMessage = payload.new as Message;
-              setMessages(prev => ({
-                ...prev,
-                [newMessage.conversation_id]: [
-                  ...(prev[newMessage.conversation_id] || []),
-                  newMessage
-                ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-              }));
-            }
-          }
-        )
-        .subscribe();
-
-      return () => {
-        conversationSubscription.unsubscribe();
-        messageSubscription.unsubscribe();
-      };
-    }
-  }, [user]);
-
+  // Fetch conversations by email
   const fetchConversations = async () => {
-    if (!user) return;
-
+    if (!userEmail) return;
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('conversations')
-        .select(`
-          *,
-          user1:profiles!user1_id (
-            id,
-            username,
-            full_name,
-            avatar_url
-          ),
-          user2:profiles!user2_id (
-            id,
-            username,
-            full_name,
-            avatar_url
-          )
-        `)
-        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
-        .order('last_message_at', { ascending: false });
+        .select('*')
+        .or(`user1_email.eq.${userEmail},user2_email.eq.${userEmail}`)
+        .order('updated_at', { ascending: false });
 
       if (error) throw error;
       setConversations(data || []);
-    } catch (error) {
-      console.error('Error fetching conversations:', error);
+    } catch (err) {
+      console.error('Error fetching conversations:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch messages for a conversation
   const fetchMessages = async (conversationId: string) => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('messages')
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            full_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      
-      setMessages(prev => ({
-        ...prev,
-        [conversationId]: data || []
-      }));
-
-      return data || [];
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      toast.error('Failed to load messages');
-      return [];
+      setMessages(data || []);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const createOrGetConversation = async (otherUserId: string) => {
-    if (!user) return null;
-
+  // Send message
+  const sendMessage = async (conversationId: string, senderEmail: string, content: string) => {
     try {
-      // Check if conversation already exists
-      const { data: existing, error: fetchError } = await supabase
+      const { error } = await supabase.from('messages').insert([
+        {
+          conversation_id: conversationId,
+          sender_email: senderEmail,
+          content,
+        },
+      ]);
+      if (error) throw error;
+
+      // update last message in conversation
+      await supabase
         .from('conversations')
-        .select('*')
-        .or(`and(user1_id.eq.${user.id},user2_id.eq.${otherUserId}),and(user1_id.eq.${otherUserId},user2_id.eq.${user.id})`)
-        .maybeSingle();
+        .update({ last_message: content, updated_at: new Date().toISOString() })
+        .eq('id', conversationId);
+    } catch (err) {
+      console.error('Error sending message:', err);
+    }
+  };
 
-      if (fetchError) throw fetchError;
-
-      if (existing) {
-        return existing.id;
-      }
-
-      // Create new conversation
-      const user1Id = user.id < otherUserId ? user.id : otherUserId;
-      const user2Id = user.id < otherUserId ? otherUserId : user.id;
-
-      const { data: newConversation, error: createError } = await supabase
+  // Create a new conversation
+  const createConversation = async (user1Email: string, user2Email: string) => {
+    try {
+      const { data, error } = await supabase
         .from('conversations')
-        .insert({
-          user1_id: user1Id,
-          user2_id: user2Id,
-        })
+        .insert([{ user1_email: user1Email, user2_email: user2Email }])
         .select()
         .single();
 
-      if (createError) throw createError;
-      
-      fetchConversations(); // Refresh conversations list
-      return newConversation.id;
-    } catch (error) {
-      console.error('Error creating conversation:', error);
-      toast.error('Failed to start conversation');
+      if (error) throw error;
+      return data as Conversation;
+    } catch (err) {
+      console.error('Error creating conversation:', err);
       return null;
     }
   };
 
-  const sendMessage = async (conversationId: string, content: string, messageType: 'text' | 'image' = 'text') => {
-    if (!user) return;
+  // Subscribe to realtime messages
+  useEffect(() => {
+    const messageChannel = supabase
+      .channel('messages')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          setMessages((prev) => [...prev, payload.new as Message]);
+        }
+      )
+      .subscribe();
 
-    try {
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: user.id,
-          content,
-          message_type: messageType,
-        });
+    return () => {
+      supabase.removeChannel(messageChannel);
+    };
+  }, []);
 
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error sending message:', error);
-      toast.error('Failed to send message');
-      throw error;
-    }
-  };
-
-  const markAsRead = async (conversationId: string) => {
-    if (!user) return;
-
-    try {
-      const { error } = await supabase
-        .from('messages')
-        .update({ is_read: true })
-        .eq('conversation_id', conversationId)
-        .neq('sender_id', user.id);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error marking messages as read:', error);
-    }
-  };
+  // Load conversations on mount
+  useEffect(() => {
+    fetchConversations();
+  }, [userEmail]);
 
   return {
     conversations,
     messages,
     loading,
+    fetchConversations,
     fetchMessages,
-    createOrGetConversation,
     sendMessage,
-    markAsRead,
-    refresh: fetchConversations,
+    createConversation,
   };
 };

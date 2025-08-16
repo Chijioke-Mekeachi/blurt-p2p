@@ -1,48 +1,36 @@
 import React from 'react';
-import { useTrades } from '../../hooks/useTrades';
-import { useAuth } from '../../contexts/AuthContext';
+import { useTrades, Trade } from '../../hooks/useTrades';
 import { Clock, CheckCircle, XCircle, AlertTriangle, User, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 
 export const Trades: React.FC = () => {
-  const { trades, loading, updateTradeStatus } = useTrades();
-  const { user } = useAuth();
+  const { trades, loading, updateTrade } = useTrades();
 
   const handleStatusUpdate = async (tradeId: string, status: 'completed' | 'cancelled' | 'disputed') => {
     try {
-      await updateTradeStatus(tradeId, status);
+      await updateTrade(tradeId, { status, completed_at: status === 'completed' ? new Date().toISOString() : null });
     } catch (error) {
-      // Error handling is done in the hook
+      // Error handling done in hook
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status?: string) => {
     switch (status) {
-      case 'pending':
-        return <Clock className="w-5 h-5 text-yellow-500" />;
-      case 'completed':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'cancelled':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'disputed':
-        return <AlertTriangle className="w-5 h-5 text-orange-500" />;
-      default:
-        return <Clock className="w-5 h-5 text-gray-500" />;
+      case 'pending': return <Clock className="w-5 h-5 text-yellow-500" />;
+      case 'completed': return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'cancelled': return <XCircle className="w-5 h-5 text-red-500" />;
+      case 'disputed': return <AlertTriangle className="w-5 h-5 text-orange-500" />;
+      default: return <Clock className="w-5 h-5 text-gray-500" />;
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
-      case 'completed':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
-      case 'disputed':
-        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+      case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+      case 'cancelled': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
+      case 'disputed': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
   };
 
@@ -62,33 +50,20 @@ export const Trades: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Trade History
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          View and manage your trading transactions
-        </p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Trade History</h1>
+        <p className="text-gray-600 dark:text-gray-400">View and manage your trading transactions</p>
       </div>
 
-      {/* Trades list */}
       {trades.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
           <Clock className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-            No trades yet
-          </h3>
-          <p className="text-gray-600 dark:text-gray-400">
-            Start trading by accepting offers in the marketplace
-          </p>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No trades yet</h3>
+          <p className="text-gray-600 dark:text-gray-400">Start trading by creating trades</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {trades.map((trade) => {
-            const isBuyer = trade.buyer_id === user?.id;
-            const otherParty = isBuyer ? trade.seller : trade.buyer;
-            
+          {trades.map((trade: Trade) => {
             return (
               <div
                 key={trade.id}
@@ -99,19 +74,12 @@ export const Trades: React.FC = () => {
                   <div className="flex items-center space-x-3">
                     {getStatusIcon(trade.status)}
                     <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(trade.status)}`}>
-                      {trade.status.toUpperCase()}
-                    </span>
-                    <span className={`px-3 py-1 text-xs font-medium rounded-full ${
-                      isBuyer 
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-                        : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
-                    }`}>
-                      {isBuyer ? 'BUYING' : 'SELLING'}
+                      {trade.status?.toUpperCase() || 'UNKNOWN'}
                     </span>
                   </div>
                   <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
                     <Calendar className="w-4 h-4 mr-1" />
-                    {format(new Date(trade.created_at), 'MMM d, yyyy HH:mm')}
+                    {trade.created_at ? format(new Date(trade.created_at), 'MMM d, yyyy HH:mm') : 'N/A'}
                   </div>
                 </div>
 
@@ -122,20 +90,18 @@ export const Trades: React.FC = () => {
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Amount</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {trade.amount} BLURT
-                        </span>
+                        <span className="font-medium text-gray-900 dark:text-white">{trade.amount || 0} BLURT</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Price</span>
                         <span className="font-medium text-gray-900 dark:text-white">
-                          ${trade.price_per_token.toFixed(4)}
+                          ${trade.price_per_token?.toFixed(4) || '0.0000'}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Total</span>
                         <span className="font-bold text-gray-900 dark:text-white">
-                          ${trade.total_value.toFixed(2)}
+                          ${((trade.amount || 0) * (trade.price_per_token || 0)).toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -149,10 +115,10 @@ export const Trades: React.FC = () => {
                       </div>
                       <div>
                         <div className="font-medium text-gray-900 dark:text-white">
-                          {otherParty?.username || 'Unknown User'}
+                          {trade.partner_name || 'Unknown User'}
                         </div>
                         <div className="text-sm text-gray-600 dark:text-gray-400">
-                          {otherParty?.full_name}
+                          {trade.partner_info || ''}
                         </div>
                       </div>
                     </div>
@@ -163,21 +129,21 @@ export const Trades: React.FC = () => {
                 {trade.status === 'pending' && (
                   <div className="flex space-x-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                     <button
-                      onClick={() => handleStatusUpdate(trade.id, 'completed')}
+                      onClick={() => handleStatusUpdate(trade.id!, 'completed')}
                       className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
                     >
                       <CheckCircle className="w-4 h-4" />
                       <span>Mark Complete</span>
                     </button>
                     <button
-                      onClick={() => handleStatusUpdate(trade.id, 'disputed')}
+                      onClick={() => handleStatusUpdate(trade.id!, 'disputed')}
                       className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
                     >
                       <AlertTriangle className="w-4 h-4" />
                       <span>Dispute</span>
                     </button>
                     <button
-                      onClick={() => handleStatusUpdate(trade.id, 'cancelled')}
+                      onClick={() => handleStatusUpdate(trade.id!, 'cancelled')}
                       className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
                     >
                       <XCircle className="w-4 h-4" />
