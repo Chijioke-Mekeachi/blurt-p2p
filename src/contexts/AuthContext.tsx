@@ -30,35 +30,47 @@ export const useAuth = () => {
   return context;
 };
 
-interface AuthProviderProps {
-  children: React.ReactNode;
-}
-
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user?.email) fetchProfile(session.user.email);
-      else setLoading(false);
-    });
+    let mounted = true;
 
-    const { subscription } = supabase.auth.onAuthStateChange(
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!mounted) return;
+
+      setUser(session?.user ?? null);
+
+      if (session?.user?.email) {
+        await fetchProfile(session.user.email);
+      } else {
+        setProfile(null);
+        setLoading(false);
+      }
+    };
+
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!mounted) return;
         setUser(session?.user ?? null);
-        if (session?.user?.email) await fetchProfile(session.user.email);
-        else {
+        if (session?.user?.email) {
+          await fetchProfile(session.user.email);
+        } else {
           setProfile(null);
           setLoading(false);
         }
       }
     );
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Fetch profile by email
@@ -76,24 +88,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Error fetching profile:', error);
       toast.error('Failed to load profile');
     } finally {
-      setLoading(false);
+      setLoading(false); // ✅ always clear loading
     }
   };
 
-  // Signup with automatic profile creation
-  const signUp = async (
-    email: string,
-    password: string,
-    userData: {
-      username: string;
-      full_name: string;
-      bio: string;
-      phone: string;
-    }
-  ) => {
+  // --- Auth Actions ---
+
+  const signUp = async (email: string, password: string, userData: {
+    username: string;
+    full_name: string;
+    bio: string;
+    phone: string;
+  }) => {
     try {
       setLoading(true);
-
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -108,7 +116,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           .from('profiles')
           .insert([
             {
-              email: email,
+              email,
               username: userData.username,
               full_name: userData.full_name,
               bio: userData.bio,
@@ -122,9 +130,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (profileError) throw profileError;
       }
 
-      toast.success(
-        'Account created successfully! Please check your email to verify your account.'
-      );
+      toast.success('Account created! Please verify via email.');
     } catch (error) {
       const authError = error as AuthError;
       toast.error(authError.message);
@@ -153,6 +159,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      setUser(null);
+      setProfile(null);
       toast.success('Signed out successfully!');
     } catch (error) {
       const authError = error as AuthError;
@@ -170,7 +178,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (error) throw error;
       setProfile(prev => (prev ? { ...prev, ...updates } : null));
-      toast.success('Profile updated successfully!');
+      toast.success('Profile updated!');
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error('Failed to update profile');
@@ -178,7 +186,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const value = { user, profile, loading, signUp, signIn, signOut, updateProfile };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, profile, loading, signUp, signIn, signOut, updateProfile }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };

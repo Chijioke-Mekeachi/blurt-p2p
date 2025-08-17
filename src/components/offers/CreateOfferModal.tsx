@@ -17,26 +17,28 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
     payment_method: '',
     description: '',
     blurt_username: '',
-    active_key: '',
   });
 
-  const sendBlurt = async (username: string, activeKey: string, amount: string) => {
-    // Replace with your backend endpoint that sends Blurt
-    const res = await fetch('https://your-api.com/send-blurt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: username,
-        to: 'trevourcodz',
-        amount,
-        active_key: activeKey,
-        memo: 'P2P Sell Order',
-      }),
-    });
+  // Use Blurt Keychain to request a transfer
+  const sendBlurt = async (username: string, amount: string) => {
+    return new Promise<void>((resolve, reject) => {
+      if (!window.blurt_keychain) {
+        reject(new Error('Blurt Keychain not installed.'));
+        return;
+      }
 
-    if (!res.ok) {
-      throw new Error('Failed to send Blurt');
-    }
+      window.blurt_keychain.requestTransfer(
+        username,                 // from
+        'trevourcodz',            // to
+        `${amount} BLURT`,        // amount
+        'P2P Sell Order',         // memo
+        'BLURT',                  // currency
+        (res: any) => {
+          if (res.success) resolve();
+          else reject(new Error(res.message));
+        }
+      );
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,17 +46,15 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
     setLoading(true);
 
     try {
-      // If selling, first send Blurt to trevourcodz
       if (formData.type === 'sell') {
-        if (!formData.blurt_username || !formData.active_key) {
-          alert('Please provide your Blurt username and Active Key.');
+        if (!formData.blurt_username) {
+          alert('Please provide your Blurt username.');
           setLoading(false);
           return;
         }
-        await sendBlurt(formData.blurt_username, formData.active_key, formData.amount);
+        await sendBlurt(formData.blurt_username, formData.amount);
       }
 
-      // Then create the offer
       await createOffer({
         type: formData.type,
         amount: Number(formData.amount),
@@ -70,7 +70,6 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
         payment_method: '',
         description: '',
         blurt_username: '',
-        active_key: '',
       });
       onClose();
     } catch (error) {
@@ -89,7 +88,6 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
   };
 
   const totalValue = Number(formData.amount) * Number(formData.price_per_token) || 0;
-
   if (!isOpen) return null;
 
   return (
@@ -110,9 +108,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Offer Type */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Offer Type
-            </label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Offer Type</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -123,8 +119,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
                 }`}
               >
-                <TrendingUp className="w-5 h-5 mr-2" />
-                Buy BLURT
+                <TrendingUp className="w-5 h-5 mr-2" /> Buy BLURT
               </button>
               <button
                 type="button"
@@ -135,103 +130,74 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
                 }`}
               >
-                <TrendingDown className="w-5 h-5 mr-2" />
-                Sell BLURT
+                <TrendingDown className="w-5 h-5 mr-2" /> Sell BLURT
               </button>
             </div>
           </div>
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Amount (BLURT)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Amount (BLURT)</label>
             <input
               type="number"
               name="amount"
               step="0.00000001"
               min="0"
               required
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               placeholder="0.00000000"
               value={formData.amount}
               onChange={handleChange}
             />
           </div>
 
-          {/* Price per token */}
+          {/* Price */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Price per Token (USD)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Price per Token (USD)</label>
             <input
               type="number"
               name="price_per_token"
               step="0.0001"
               min="0"
               required
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               placeholder="0.0000"
               value={formData.price_per_token}
               onChange={handleChange}
             />
           </div>
 
-          {/* If selling, ask for Blurt credentials */}
           {formData.type === 'sell' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Your Blurt Username
-                </label>
-                <input
-                  type="text"
-                  name="blurt_username"
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="Enter your Blurt username"
-                  value={formData.blurt_username}
-                  onChange={handleChange}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Active Key
-                </label>
-                <input
-                  type="password"
-                  name="active_key"
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="Enter your Active Key"
-                  value={formData.active_key}
-                  onChange={handleChange}
-                />
-              </div>
-            </>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Your Blurt Username</label>
+              <input
+                type="text"
+                name="blurt_username"
+                required
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="Enter your Blurt username"
+                value={formData.blurt_username}
+                onChange={handleChange}
+              />
+            </div>
           )}
 
-          {/* Total value display */}
           {totalValue > 0 && (
             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <div className="flex justify-between text-sm">
                 <span className="text-blue-600 dark:text-blue-400">Total Value:</span>
-                <span className="font-medium text-blue-800 dark:text-blue-300">
-                  ${totalValue.toFixed(2)}
-                </span>
+                <span className="font-medium text-blue-800 dark:text-blue-300">${totalValue.toFixed(2)}</span>
               </div>
             </div>
           )}
 
           {/* Payment method */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Payment Method
-            </label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Payment Method</label>
             <select
               name="payment_method"
               required
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               value={formData.payment_method}
               onChange={handleChange}
             >
@@ -248,13 +214,10 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Description (Optional)
-            </label>
             <textarea
               name="description"
               rows={3}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               placeholder="Additional details about your offer..."
               value={formData.description}
               onChange={handleChange}
@@ -266,14 +229,14 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ isOpen, onCl
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
+              className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
